@@ -180,7 +180,7 @@ async def generate_battle_verdict(user_a: dict, user_b: dict) -> dict:
 
 # ── SQUAD PROMPTS ──────────────────────────────────────────────────────────────
 
-async def generate_squad_roast(members: List[dict]) -> str:
+async def generate_squad_roast(members: list[dict]) -> str:
     system = (
         "You are a roast comedian at a music-themed roast dinner. "
         "Roast an entire friend group's combined music taste. "
