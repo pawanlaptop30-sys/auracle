@@ -11,6 +11,7 @@ from services.scoring import (
 )
 from services.groq_ai import generate_music_horoscope, generate_taste_in_three_words
 from models.user import User
+from config import settings
 import logging
 
 router = APIRouter()
@@ -46,8 +47,19 @@ async def build_user_profile(spotify: SpotifyService, term: str = "short_term") 
         genre_counts[g] = genre_counts.get(g, 0) + 1
     genres_sorted = sorted(genre_counts, key=genre_counts.get, reverse=True)
 
-    # Derive mood from user's genres
-    mood = derive_mood_from_genres(genres_sorted[:10])
+    # ── Mood: Last.fm primary, genre map fallback ──
+    from services.lastfm import get_mood_from_tracks as lastfm_mood
+    mood = None
+    if settings.LASTFM_API_KEY:
+        try:
+            mood = await lastfm_mood(tracks_for_scoring)
+            if mood:
+                logger.info("Mood derived from Last.fm tags")
+        except Exception as e:
+            logger.warning(f"Last.fm mood failed: {e}")
+    if not mood:
+        mood = derive_mood_from_genres(genres_sorted[:10])
+        logger.info("Mood derived from genre map (fallback)")
 
     # Top artist names and track names
     top_artist_names = [a.get("name", "") for a in artists[:10]]

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379"
     GROQ_API_KEY: str
+    LASTFM_API_KEY: str = ""
+    LASTFM_SECRET: str = ""
 
     BACKEND_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:5173"
