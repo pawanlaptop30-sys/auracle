@@ -70,6 +70,48 @@ SQUAD_AWARDS = {
 }
 
 
+def _average_moods(moods: List[Dict[str, float]]) -> Dict[str, float]:
+    return {
+        "energy":      round(sum(m["energy"] for m in moods)      / len(moods), 3),
+        "valence":     round(sum(m["valence"] for m in moods)     / len(moods), 3),
+        "dance":       round(sum(m["dance"] for m in moods)       / len(moods), 3),
+        "mainstream":  round(sum(m["mainstream"] for m in moods)  / len(moods), 3),
+    }
+
+
+def _mood_for_genre(genre: str) -> Dict[str, float] | None:
+    gl = genre.strip().lower()
+    if not gl:
+        return None
+
+    # 1) Exact substring match first, preserving existing behavior.
+    for key, mood in GENRE_MOOD.items():
+        if key in gl:
+            return mood
+
+    # 2) Try matching individual words from the genre.
+    words = [w for w in re.split(r"[\s/&+,-]+", gl) if w]
+    if words:
+        matched = []
+        for word in words:
+            if word in GENRE_MOOD:
+                matched.append(GENRE_MOOD[word])
+
+        if matched:
+            return _average_moods(matched)
+
+        # 3) Try looser token matching (parent genre fallback):
+        loose_matches = []
+        for word in words:
+            for key, mood in GENRE_MOOD.items():
+                if word == key or word in key or key in word:
+                    loose_matches.append(mood)
+        if loose_matches:
+            return _average_moods(loose_matches)
+
+    return None
+
+
 def derive_mood_from_genres(genres: List[str]) -> Dict[str, float]:
     """Derive mood scores purely from user's genre list."""
     if not genres:
@@ -78,14 +120,12 @@ def derive_mood_from_genres(genres: List[str]) -> Dict[str, float]:
     energy_vals, valence_vals, dance_vals, mainstream_vals = [], [], [], []
 
     for genre in genres:
-        gl = genre.lower()
-        for key, mood in GENRE_MOOD.items():
-            if key in gl:
-                energy_vals.append(mood["energy"])
-                valence_vals.append(mood["valence"])
-                dance_vals.append(mood["dance"])
-                mainstream_vals.append(mood["mainstream"])
-                break
+        mood = _mood_for_genre(genre)
+        if mood:
+            energy_vals.append(mood["energy"])
+            valence_vals.append(mood["valence"])
+            dance_vals.append(mood["dance"])
+            mainstream_vals.append(mood["mainstream"])
 
     if not energy_vals:
         return {"energy": 0.60, "valence": 0.55, "dance": 0.60, "mainstream": 0.55}
