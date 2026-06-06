@@ -37,6 +37,55 @@ GENRE_MOOD = {
     "workout": {"energy": 0.90, "valence": 0.62, "dance": 0.75, "mainstream": 0.60},
     "devotional": {"energy": 0.45, "valence": 0.72, "dance": 0.40, "mainstream": 0.30},
     "film": {"energy": 0.60, "valence": 0.60, "dance": 0.58, "mainstream": 0.55},
+    # Indian / Regional
+    "filmi":            {"energy": 0.68, "valence": 0.66, "dance": 0.70, "mainstream": 0.65},
+    "desi pop":         {"energy": 0.72, "valence": 0.70, "dance": 0.74, "mainstream": 0.65},
+    "desi":             {"energy": 0.70, "valence": 0.68, "dance": 0.72, "mainstream": 0.62},
+    "kollywood":        {"energy": 0.70, "valence": 0.68, "dance": 0.72, "mainstream": 0.55},
+    "tollywood":        {"energy": 0.70, "valence": 0.68, "dance": 0.72, "mainstream": 0.52},
+    "malayalam":        {"energy": 0.68, "valence": 0.66, "dance": 0.70, "mainstream": 0.50},
+    "kannada":          {"energy": 0.68, "valence": 0.66, "dance": 0.70, "mainstream": 0.48},
+    "bengali":          {"energy": 0.62, "valence": 0.65, "dance": 0.65, "mainstream": 0.50},
+    "marathi":          {"energy": 0.65, "valence": 0.66, "dance": 0.68, "mainstream": 0.48},
+    "punjabi":          {"energy": 0.80, "valence": 0.72, "dance": 0.82, "mainstream": 0.62},
+    "bhangra":          {"energy": 0.85, "valence": 0.78, "dance": 0.88, "mainstream": 0.55},
+    "sufi":             {"energy": 0.42, "valence": 0.68, "dance": 0.45, "mainstream": 0.38},
+    "carnatic":         {"energy": 0.45, "valence": 0.62, "dance": 0.38, "mainstream": 0.22},
+    "hindustani":       {"energy": 0.42, "valence": 0.60, "dance": 0.35, "mainstream": 0.20},
+    "indian classical": {"energy": 0.38, "valence": 0.60, "dance": 0.32, "mainstream": 0.20},
+    "indian pop":       {"energy": 0.70, "valence": 0.68, "dance": 0.72, "mainstream": 0.65},
+    # Modern / Trap / Urban
+    "trap soul":        {"energy": 0.65, "valence": 0.45, "dance": 0.72, "mainstream": 0.70},
+    "melodic rap":      {"energy": 0.75, "valence": 0.52, "dance": 0.76, "mainstream": 0.65},
+    "drill":            {"energy": 0.82, "valence": 0.38, "dance": 0.75, "mainstream": 0.60},
+    "phonk":            {"energy": 0.85, "valence": 0.42, "dance": 0.78, "mainstream": 0.55},
+    "urban contemporary": {"energy": 0.68, "valence": 0.60, "dance": 0.75, "mainstream": 0.75},
+    "quiet storm":      {"energy": 0.45, "valence": 0.58, "dance": 0.55, "mainstream": 0.55},
+    # Electronic subgenres
+    "future bass":      {"energy": 0.85, "valence": 0.70, "dance": 0.85, "mainstream": 0.60},
+    "dubstep":          {"energy": 0.90, "valence": 0.48, "dance": 0.78, "mainstream": 0.55},
+    "drum and bass":    {"energy": 0.90, "valence": 0.52, "dance": 0.82, "mainstream": 0.42},
+    "house":            {"energy": 0.82, "valence": 0.65, "dance": 0.90, "mainstream": 0.60},
+    "techno":           {"energy": 0.88, "valence": 0.48, "dance": 0.85, "mainstream": 0.35},
+    "trance":           {"energy": 0.86, "valence": 0.65, "dance": 0.82, "mainstream": 0.45},
+    "synthwave":        {"energy": 0.72, "valence": 0.58, "dance": 0.70, "mainstream": 0.40},
+    "retrowave":        {"energy": 0.70, "valence": 0.58, "dance": 0.68, "mainstream": 0.38},
+    "vaporwave":        {"energy": 0.35, "valence": 0.55, "dance": 0.48, "mainstream": 0.28},
+    "grime":            {"energy": 0.85, "valence": 0.45, "dance": 0.75, "mainstream": 0.48},
+    "uk rap":           {"energy": 0.80, "valence": 0.50, "dance": 0.75, "mainstream": 0.52},
+    # Soft / Acoustic
+    "bedroom pop":      {"energy": 0.42, "valence": 0.60, "dance": 0.50, "mainstream": 0.30},
+    "dream pop":        {"energy": 0.40, "valence": 0.62, "dance": 0.48, "mainstream": 0.28},
+    "shoegaze":         {"energy": 0.58, "valence": 0.45, "dance": 0.42, "mainstream": 0.22},
+    "acoustic":         {"energy": 0.38, "valence": 0.60, "dance": 0.42, "mainstream": 0.45},
+    "singer-songwriter":{"energy": 0.40, "valence": 0.58, "dance": 0.40, "mainstream": 0.42},
+    # Other
+    "afro pop":         {"energy": 0.78, "valence": 0.76, "dance": 0.86, "mainstream": 0.60},
+    "dancehall":        {"energy": 0.80, "valence": 0.72, "dance": 0.88, "mainstream": 0.62},
+    "bachata":          {"energy": 0.68, "valence": 0.70, "dance": 0.85, "mainstream": 0.58},
+    "cumbia":           {"energy": 0.72, "valence": 0.72, "dance": 0.86, "mainstream": 0.55},
+    "emo":              {"energy": 0.72, "valence": 0.30, "dance": 0.45, "mainstream": 0.42},
+    "post-rock":        {"energy": 0.65, "valence": 0.45, "dance": 0.38, "mainstream": 0.22},
 }
 
 # ── Funny personality types ──
@@ -70,57 +119,54 @@ SQUAD_AWARDS = {
 }
 
 
-def _average_moods(moods: List[Dict[str, float]]) -> Dict[str, float]:
-    return {
-        "energy":      round(sum(m["energy"] for m in moods)      / len(moods), 3),
-        "valence":     round(sum(m["valence"] for m in moods)     / len(moods), 3),
-        "dance":       round(sum(m["dance"] for m in moods)       / len(moods), 3),
-        "mainstream":  round(sum(m["mainstream"] for m in moods)  / len(moods), 3),
-    }
+def _match_genre(genre: str) -> Dict[str, float] | None:
+    """
+    Try to match a single genre string against GENRE_MOOD.
+    Strategy:
+      1. Exact substring match  (e.g. "tamil pop" contains "tamil")
+      2. Word-level match       (e.g. "desi hip hop" → words: desi, hip, hop)
+      3. Averaged partial match (average all word hits)
+    Returns a mood dict or None.
+    """
+    gl = genre.lower().strip()
 
-
-def _mood_for_genre(genre: str) -> Dict[str, float] | None:
-    gl = genre.strip().lower()
-    if not gl:
-        return None
-
-    # 1) Exact substring match first, preserving existing behavior.
+    # 1. Exact substring — first key that appears inside the genre string
     for key, mood in GENRE_MOOD.items():
         if key in gl:
             return mood
 
-    # 2) Try matching individual words from the genre.
-    words = [w for w in re.split(r"[\s/&+,-]+", gl) if w]
-    if words:
-        matched = []
-        for word in words:
-            if word in GENRE_MOOD:
-                matched.append(GENRE_MOOD[word])
+    # 2 & 3. Word-level — collect mood for every word that hits a key
+    words = re.split(r"[\s\-_&/]+", gl)
+    hits: list[Dict] = []
+    for word in words:
+        if len(word) < 3:          # skip short words like "a", "of"
+            continue
+        for key, mood in GENRE_MOOD.items():
+            if word == key or word in key or key in word:
+                hits.append(mood)
+                break
 
-        if matched:
-            return _average_moods(matched)
+    if not hits:
+        return None
 
-        # 3) Try looser token matching (parent genre fallback):
-        loose_matches = []
-        for word in words:
-            for key, mood in GENRE_MOOD.items():
-                if word == key or word in key or key in word:
-                    loose_matches.append(mood)
-        if loose_matches:
-            return _average_moods(loose_matches)
-
-    return None
+    # Average all word-level hits
+    return {
+        "energy":     round(sum(h["energy"]     for h in hits) / len(hits), 3),
+        "valence":    round(sum(h["valence"]    for h in hits) / len(hits), 3),
+        "dance":      round(sum(h["dance"]      for h in hits) / len(hits), 3),
+        "mainstream": round(sum(h["mainstream"] for h in hits) / len(hits), 3),
+    }
 
 
 def derive_mood_from_genres(genres: List[str]) -> Dict[str, float]:
-    """Derive mood scores purely from user's genre list."""
+    """Derive mood scores purely from user's genre list with smart matching."""
     if not genres:
         return {"energy": 0.60, "valence": 0.55, "dance": 0.60, "mainstream": 0.55}
 
     energy_vals, valence_vals, dance_vals, mainstream_vals = [], [], [], []
 
     for genre in genres:
-        mood = _mood_for_genre(genre)
+        mood = _match_genre(genre)
         if mood:
             energy_vals.append(mood["energy"])
             valence_vals.append(mood["valence"])
@@ -131,10 +177,10 @@ def derive_mood_from_genres(genres: List[str]) -> Dict[str, float]:
         return {"energy": 0.60, "valence": 0.55, "dance": 0.60, "mainstream": 0.55}
 
     return {
-        "energy":      round(sum(energy_vals)      / len(energy_vals),      3),
-        "valence":     round(sum(valence_vals)      / len(valence_vals),     3),
-        "dance":       round(sum(dance_vals)        / len(dance_vals),       3),
-        "mainstream":  round(sum(mainstream_vals)   / len(mainstream_vals),  3),
+        "energy":     round(sum(energy_vals)     / len(energy_vals),     3),
+        "valence":    round(sum(valence_vals)     / len(valence_vals),    3),
+        "dance":      round(sum(dance_vals)       / len(dance_vals),      3),
+        "mainstream": round(sum(mainstream_vals)  / len(mainstream_vals), 3),
     }
 
 
