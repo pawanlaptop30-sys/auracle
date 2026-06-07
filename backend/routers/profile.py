@@ -1,218 +1,86 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException
+from backend.services.spotify import SpotifyService
+from backend.services.scoring import scoring_service
+from backend.services.auth import get_current_user
+from typing import Dict
 
-from services.database import get_db
-from services.auth import get_current_user, get_spotify_service, get_valid_spotify_token
-from services.spotify import SpotifyService
-from services.scoring import (
-    derive_mood_from_genres, get_personality_type,
-    compute_taste_score, detect_intervention,
-    get_artist_categories,
-)
-from services.groq_ai import generate_music_horoscope, generate_taste_in_three_words
-from models.user import User
-from config import settings
-import logging
-
-router = APIRouter()
-logger = logging.getLogger(__name__)
-
-VALID_TERMS = {"short_term", "medium_term", "long_term"}
-
-
-async def build_user_profile(spotify: SpotifyService, term: str = "short_term") -> dict:
-    """Build complete user profile from their own Spotify data only."""
-    try:
-        tracks_data = await spotify.get_top_tracks(term, 50)
-        tracks      = tracks_data.get("items", [])
-    except Exception as e:
-        logger.error(f"Tracks fetch failed: {e}")
-        tracks = []
-
-    try:
-        artists_data = await spotify.get_top_artists(term, 50)
-        artists      = artists_data.get("items", [])
-    except Exception as e:
-        logger.error(f"Artists fetch failed: {e}")
-        artists = []
-
-    # ── Build tracks_for_scoring first — used by mood + scoring below ──
-    tracks_for_scoring = []
-    for t in tracks:
-        tracks_for_scoring.append({
-            "name":    t.get("name", ""),
-            "artists": [a.get("name", "") for a in t.get("artists", [])],
-        })
-
-    # ── Extract genres from Spotify artist objects ──
-    all_genres: list = []
-    for a in artists:
-        all_genres.extend(a.get("genres", []))
-
-    genre_counts: dict = {}
-    for g in all_genres:
-        genre_counts[g] = genre_counts.get(g, 0) + 1
-    spotify_genres_sorted = sorted(genre_counts, key=genre_counts.get, reverse=True)
-
-    # ── Artist-based Indian/regional category detection ──
-    # Collect all unique artist names from top tracks + top artists
-    all_artist_names: list[str] = [a.get("name", "") for a in artists]
-    for t in tracks:
-        for a in t.get("artists", []):
-            name = a.get("name", "")
-            if name and name not in all_artist_names:
-                all_artist_names.append(name)
-
-    artist_categories = get_artist_categories(all_artist_names)  # Counter
-    # Convert to a sorted list of category strings, weighted by frequency
-    indian_genres: list[str] = []
-    for category, count in artist_categories.most_common():
-        # Insert each category once per 3 occurrences so it ranks naturally
-        reps = max(1, count // 3)
-        indian_genres.extend([category] * reps)
-
-    # ── Merge: Indian categories take precedence, then Spotify genres ──
-    # Deduplicate while preserving order
-    seen: set = set()
-    merged_genres: list[str] = []
-    for g in indian_genres + spotify_genres_sorted:
-        if g not in seen:
-            seen.add(g)
-            merged_genres.append(g)
-
-    genres_sorted = merged_genres
-
-    # ── Mood: Last.fm primary → genre map fallback ──
-    from services.lastfm import get_mood_from_tracks as lastfm_mood
-    mood = None
-    if settings.LASTFM_API_KEY:
-        try:
-            mood = await lastfm_mood(tracks_for_scoring)
-            if mood:
-                logger.info("Mood derived from Last.fm tags")
-        except Exception as e:
-            logger.warning(f"Last.fm mood failed: {e}")
-    if not mood:
-        mood = derive_mood_from_genres(genres_sorted[:10])
-        logger.info("Mood derived from genre map (fallback)")
-
-    # Top artist names and track names
-    top_artist_names = [a.get("name", "") for a in artists[:10]]
-    top_track_names  = [t.get("name", "") for t in tracks[:10]]
-
-    personality  = get_personality_type(mood, top_artist_names, genres_sorted)
-    taste_scores = compute_taste_score(mood, genres_sorted, top_artist_names, tracks_for_scoring)
-    intervention = detect_intervention(top_artist_names, tracks_for_scoring)
-
-    # Format top tracks for response
-    formatted_tracks = []
-    for i, t in enumerate(tracks[:20]):
-        try:
-            album  = t.get("album") or {}
-            images = album.get("images") or [{}]
-            formatted_tracks.append({
-                "rank":        i + 1,
-                "id":          t.get("id", ""),
-                "name":        t.get("name", "Unknown"),
-                "artists":     [a.get("name", "") for a in t.get("artists", [])],
-                "album":       album.get("name", ""),
-                "album_art":   images[0].get("url") if images else None,
-                "popularity":  t.get("popularity", 0),
-                "preview_url": t.get("preview_url"),
-                "external_url": (t.get("external_urls") or {}).get("spotify", ""),
-            })
-        except Exception:
-            continue
-
-    # Format top artists for response
-    formatted_artists = []
-    for i, a in enumerate(artists[:20]):
-        try:
-            images = a.get("images") or [{}]
-            formatted_artists.append({
-                "rank":       i + 1,
-                "id":         a.get("id", ""),
-                "name":       a.get("name", "Unknown"),
-                "genres":     a.get("genres", [])[:3],
-                "popularity": a.get("popularity", 0),
-                "followers":  (a.get("followers") or {}).get("total", 0),
-                "image":      images[0].get("url") if images else None,
-            })
-        except Exception:
-            continue
-
-    return {
-        "term":             term,
-        "top_tracks":       formatted_tracks,
-        "top_artists":      formatted_artists,
-        "top_artist_names": top_artist_names,
-        "top_track_names":  top_track_names,
-        "genres":           genres_sorted[:15],
-        "mood":             mood,
-        "personality_type": personality,
-        "scores":           taste_scores,
-        "intervention":     intervention,
-    }
-
+router = APIRouter(prefix="/profile", tags=["profile"])
+spotify_service = SpotifyService()
 
 @router.get("/me")
-async def get_my_profile(
-    term: str = Query("short_term"),
-    user: User = Depends(get_current_user),
-    spotify: SpotifyService = Depends(get_spotify_service),
+async def get_my_profile(current_user: Dict = Depends(get_current_user)):
+    """Get current user's profile with actual Spotify data"""
+    try:
+        access_token = current_user.get('spotify_access_token')
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Spotify not connected")
+        
+        # Get actual Spotify profile
+        spotify_profile = spotify_service.get_user_profile(access_token)
+        
+        # Get actual listening analysis
+        listening_data = spotify_service.analyze_listening_patterns(access_token)
+        
+        # Calculate scores based on actual data
+        music_score = scoring_service.calculate_music_score(listening_data)
+        
+        return {
+            'spotify_profile': {
+                'display_name': spotify_profile.get('display_name'),
+                'followers': spotify_profile.get('followers', {}).get('total', 0),
+                'image': spotify_profile.get('images', [{}])[0].get('url') if spotify_profile.get('images') else None,
+                'country': spotify_profile.get('country'),
+                'product': spotify_profile.get('product')
+            },
+            'listening_analysis': {
+                'top_genres': listening_data.get('top_genres', {}),
+                'audio_features': listening_data.get('audio_features', {}),
+                'top_tracks': listening_data.get('top_tracks', []),
+                'top_artists': listening_data.get('top_artists', [])
+            },
+            'music_score': music_score
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/genres")
+async def get_my_genres(
+    time_range: str = 'medium_term',
+    current_user: Dict = Depends(get_current_user)
 ):
-    if term not in VALID_TERMS:
-        term = "short_term"
-    profile = await build_user_profile(spotify, term)
-    return {
-        "user": {
-            "id":           user.id,
-            "display_name": user.display_name,
-            "avatar_url":   user.avatar_url,
-            "public_slug":  user.public_slug,
-        },
-        **profile,
-    }
+    """Get user's actual Spotify genres"""
+    try:
+        access_token = current_user.get('spotify_access_token')
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Spotify not connected")
+        
+        genres = spotify_service.get_user_genres_from_artists(access_token, time_range)
+        
+        return {
+            'time_range': time_range,
+            'genres': genres,
+            'total_unique_genres': len(genres)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/me/horoscope")
-async def get_horoscope(
-    term: str = Query("short_term"),
-    user: User = Depends(get_current_user),
-    spotify: SpotifyService = Depends(get_spotify_service),
+@router.get("/audio-features")
+async def get_audio_features(
+    time_range: str = 'medium_term',
+    current_user: Dict = Depends(get_current_user)
 ):
-    if term not in VALID_TERMS:
-        term = "short_term"
-    profile   = await build_user_profile(spotify, term)
-    horoscope = await generate_music_horoscope({
-        "name":             user.display_name,
-        "top_artists":      profile["top_artist_names"][:4],
-        "personality_type": profile["personality_type"],
-        "energy":           profile["mood"].get("energy", 0.5),
-    })
-    three_words = await generate_taste_in_three_words({
-        "top_artists": profile["top_artist_names"][:3],
-        "genres":      profile["genres"][:3],
-    })
-    return {"horoscope": horoscope, "three_words": three_words}
-
-
-@router.get("/{slug}")
-async def get_public_profile(
-    slug: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """Public profile — only returns non-sensitive display data."""
-    result = await db.execute(select(User).where(User.public_slug == slug))
-    user   = result.scalar_one_or_none()
-    if not user:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Profile not found")
-    return {
-        "id":           user.id,
-        "display_name": user.display_name,
-        "avatar_url":   user.avatar_url,
-        "public_slug":  user.public_slug,
-        "member_since": user.created_at.isoformat(),
-    }
+    """Get user's audio features from actual listening data"""
+    try:
+        access_token = current_user.get('spotify_access_token')
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Spotify not connected")
+        
+        listening_data = spotify_service.analyze_listening_patterns(access_token, time_range)
+        
+        return {
+            'time_range': time_range,
+            'audio_features': listening_data.get('audio_features', {}),
+            'derived_mood': scoring_service._determine_mood(listening_data.get('audio_features', {}))
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
