@@ -7,7 +7,8 @@ from services.auth import get_current_user, get_spotify_service, get_valid_spoti
 from services.spotify import SpotifyService
 from services.scoring import (
     derive_mood_from_genres, get_personality_type,
-    compute_taste_score, detect_intervention
+    compute_taste_score, detect_intervention,
+    get_artist_categories,
 )
 from services.groq_ai import generate_music_horoscope, generate_taste_in_three_words
 from models.user import User
@@ -23,8 +24,8 @@ VALID_TERMS = {"short_term", "medium_term", "long_term"}
 async def build_user_profile(spotify: SpotifyService, term: str = "short_term") -> dict:
     """Build complete user profile from their own Spotify data only."""
     try:
-        tracks_data  = await spotify.get_top_tracks(term, 50)
-        tracks       = tracks_data.get("items", [])
+        tracks_data = await spotify.get_top_tracks(term, 50)
+        tracks      = tracks_data.get("items", [])
     except Exception as e:
         logger.error(f"Tracks fetch failed: {e}")
         tracks = []
@@ -36,18 +37,53 @@ async def build_user_profile(spotify: SpotifyService, term: str = "short_term") 
         logger.error(f"Artists fetch failed: {e}")
         artists = []
 
-    # Extract genres from user's own top artists
+    # ── Build tracks_for_scoring first — used by mood + scoring below ──
+    tracks_for_scoring = []
+    for t in tracks:
+        tracks_for_scoring.append({
+            "name":    t.get("name", ""),
+            "artists": [a.get("name", "") for a in t.get("artists", [])],
+        })
+
+    # ── Extract genres from Spotify artist objects ──
     all_genres: list = []
     for a in artists:
         all_genres.extend(a.get("genres", []))
 
-    # Unique genres sorted by frequency
     genre_counts: dict = {}
     for g in all_genres:
         genre_counts[g] = genre_counts.get(g, 0) + 1
-    genres_sorted = sorted(genre_counts, key=genre_counts.get, reverse=True)
+    spotify_genres_sorted = sorted(genre_counts, key=genre_counts.get, reverse=True)
 
-    # ── Mood: Last.fm primary, genre map fallback ──
+    # ── Artist-based Indian/regional category detection ──
+    # Collect all unique artist names from top tracks + top artists
+    all_artist_names: list[str] = [a.get("name", "") for a in artists]
+    for t in tracks:
+        for a in t.get("artists", []):
+            name = a.get("name", "")
+            if name and name not in all_artist_names:
+                all_artist_names.append(name)
+
+    artist_categories = get_artist_categories(all_artist_names)  # Counter
+    # Convert to a sorted list of category strings, weighted by frequency
+    indian_genres: list[str] = []
+    for category, count in artist_categories.most_common():
+        # Insert each category once per 3 occurrences so it ranks naturally
+        reps = max(1, count // 3)
+        indian_genres.extend([category] * reps)
+
+    # ── Merge: Indian categories take precedence, then Spotify genres ──
+    # Deduplicate while preserving order
+    seen: set = set()
+    merged_genres: list[str] = []
+    for g in indian_genres + spotify_genres_sorted:
+        if g not in seen:
+            seen.add(g)
+            merged_genres.append(g)
+
+    genres_sorted = merged_genres
+
+    # ── Mood: Last.fm primary → genre map fallback ──
     from services.lastfm import get_mood_from_tracks as lastfm_mood
     mood = None
     if settings.LASTFM_API_KEY:
@@ -65,17 +101,9 @@ async def build_user_profile(spotify: SpotifyService, term: str = "short_term") 
     top_artist_names = [a.get("name", "") for a in artists[:10]]
     top_track_names  = [t.get("name", "") for t in tracks[:10]]
 
-    # Track data for scoring
-    tracks_for_scoring = []
-    for t in tracks:
-        tracks_for_scoring.append({
-            "name":    t.get("name", ""),
-            "artists": [a.get("name", "") for a in t.get("artists", [])],
-        })
-
-    personality   = get_personality_type(mood, top_artist_names, genres_sorted)
-    taste_scores  = compute_taste_score(mood, genres_sorted, top_artist_names, tracks_for_scoring)
-    intervention  = detect_intervention(top_artist_names, tracks_for_scoring)
+    personality  = get_personality_type(mood, top_artist_names, genres_sorted)
+    taste_scores = compute_taste_score(mood, genres_sorted, top_artist_names, tracks_for_scoring)
+    intervention = detect_intervention(top_artist_names, tracks_for_scoring)
 
     # Format top tracks for response
     formatted_tracks = []
@@ -84,13 +112,13 @@ async def build_user_profile(spotify: SpotifyService, term: str = "short_term") 
             album  = t.get("album") or {}
             images = album.get("images") or [{}]
             formatted_tracks.append({
-                "rank":       i + 1,
-                "id":         t.get("id", ""),
-                "name":       t.get("name", "Unknown"),
-                "artists":    [a.get("name", "") for a in t.get("artists", [])],
-                "album":      album.get("name", ""),
-                "album_art":  images[0].get("url") if images else None,
-                "popularity": t.get("popularity", 0),
+                "rank":        i + 1,
+                "id":          t.get("id", ""),
+                "name":        t.get("name", "Unknown"),
+                "artists":     [a.get("name", "") for a in t.get("artists", [])],
+                "album":       album.get("name", ""),
+                "album_art":   images[0].get("url") if images else None,
+                "popularity":  t.get("popularity", 0),
                 "preview_url": t.get("preview_url"),
                 "external_url": (t.get("external_urls") or {}).get("spotify", ""),
             })
@@ -156,7 +184,7 @@ async def get_horoscope(
 ):
     if term not in VALID_TERMS:
         term = "short_term"
-    profile = await build_user_profile(spotify, term)
+    profile   = await build_user_profile(spotify, term)
     horoscope = await generate_music_horoscope({
         "name":             user.display_name,
         "top_artists":      profile["top_artist_names"][:4],

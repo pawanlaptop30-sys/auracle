@@ -1,8 +1,167 @@
 from typing import List, Dict
+from collections import Counter
 import re
 
+# ── Artist → Indian/Regional category map ────────────────────────────────────
+# Covers 60+ artists. Keys are lowercase for case-insensitive lookup.
+ARTIST_CATEGORY_MAP: Dict[str, str] = {
+    # Tamil Film Music
+    "ar rahman":            "tamil film music",
+    "a.r. rahman":          "tamil film music",
+    "harris jayaraj":       "tamil film music",
+    "yuvan shankar raja":   "tamil film music",
+    "anirudh ravichander":  "tamil film music",
+    "anirudh":              "tamil film music",
+    "d. imman":             "tamil film music",
+    "d imman":              "tamil film music",
+    "gv prakash kumar":     "tamil film music",
+    "gv prakash":           "tamil film music",
+    "santhosh narayanan":   "tamil film music",
+    "sean roldan":          "tamil film music",
+    "hiphop tamizha":       "tamil hip-hop",
+    "hiphop tamizha adhi":  "tamil hip-hop",
+    "sj suryah":            "tamil film music",
+    "vijay antony":         "tamil film music",
+    "deva":                 "tamil film music",
+    "ilaiyaraaja":          "tamil film music (classic)",
+    "ilayaraja":            "tamil film music (classic)",
+    "m. s. viswanathan":    "tamil film music (classic)",
+    "ms viswanathan":       "tamil film music (classic)",
+    "s. a. rajkumar":       "tamil film music (classic)",
+    "sa rajkumar":          "tamil film music (classic)",
+    "james vasanthan":      "tamil film music",
+    "simon":                "tamil film music",
+    "thaman s":             "telugu film music",
+
+    # Tamil Independent / Hip-Hop
+    "arivu":                "tamil hip-hop",
+    "pb":                   "tamil hip-hop",
+    "pa ranjith":           "tamil independent",
+    "yogi b":               "tamil hip-hop",
+    "natchatra":            "tamil independent",
+    "leon james":           "tamil independent/film",
+
+    # Tamil Devotional / Classical
+    "bombay sisters":       "devotional",
+    "m.s. subbulakshmi":    "indian classical/film",
+    "ms subbulakshmi":      "indian classical/film",
+    "m. s. subbulakshmi":   "indian classical/film",
+    "k.j. yesudas":         "spiritual/film",
+    "kj yesudas":           "spiritual/film",
+    "s.p. balasubrahmanyam": "indian film/ghazal",
+    "sp balasubrahmanyam":  "indian film/ghazal",
+    "spb":                  "indian film/ghazal",
+
+    # Telugu Film Music
+    "s. s. thaman":         "telugu film music",
+    "ss thaman":            "telugu film music",
+    "devi sri prasad":      "telugu film music",
+    "dsp":                  "telugu film music",
+    "mickey j meyer":       "telugu film music",
+    "mani sharma":          "telugu film music",
+    "anup rubens":          "telugu film music",
+    "radhan":               "telugu film music",
+    "vishal-shekhar":       "hindi film music",
+
+    # Kannada / Malayalam Film Music
+    "ravi basrur":          "kannada film music",
+    "arjun janya":          "kannada film music",
+    "v. harikrishna":       "kannada film music",
+    "v harikrishna":        "kannada film music",
+    "hamsalekha":           "kannada film music",
+    "raju anantaswamy":     "kannada/tamil film",
+    "bijibal":              "malayalam film music",
+    "shaan rahman":         "malayalam film music",
+    "m jayachandran":       "malayalam film music",
+    "gopi sundar":          "malayalam film music",
+    "vidyasagar":           "kannada/tamil film",
+
+    # Hindi / Bollywood Film Music
+    "shankar-ehsaan-loy":   "hindi film music",
+    "pritam":               "hindi film music",
+    "amit trivedi":         "hindi film music",
+    "vishal bhardwaj":      "hindi film music",
+    "a.r. rahman":          "hindi film music",
+    "sonu nigam":           "hindi film music",
+    "arijit singh":         "hindi film music",
+    "shreya ghoshal":       "hindi film music",
+    "armaan malik":         "hindi pop",
+    "neha kakkar":          "hindi pop",
+    "badshah":              "hindi hip-hop",
+    "yo yo honey singh":    "hindi hip-hop",
+    "divine":               "hindi hip-hop",
+    "nucleya":              "hindi electronic",
+    "ritviz":               "hindi independent",
+    "prateek kuhad":        "hindi independent",
+    "when chai met toast":  "hindi independent",
+
+    # Punjabi
+    "diljit dosanjh":       "punjabi",
+    "ap dhillon":           "punjabi",
+    "shubh":                "punjabi",
+    "sidhu moosewala":      "punjabi",
+    "amrit maan":           "punjabi",
+    "jazzy b":              "punjabi",
+    "guru randhawa":        "punjabi pop",
+
+    # Devotional / Spiritual
+    "shankar mahadevan":    "devotional",
+    "hariharan":            "devotional",
+    "hari prasad chaurasia": "indian classical/film",
+    "zakir hussain":        "indian classical/film",
+    "pandit jasraj":        "indian classical/film",
+    "lata mangeshkar":      "hindi film music",
+    "asha bhosle":          "hindi film music",
+    "kishore kumar":        "hindi film music",
+    "mohammed rafi":        "hindi film music",
+    "hemant kumar":         "hindi film music",
+}
+
+# Map our Indian category labels → mood values so the rest of the scoring
+# pipeline works without any other changes.
+INDIAN_CATEGORY_MOOD: Dict[str, Dict[str, float]] = {
+    "tamil film music":          {"energy": 0.72, "valence": 0.68, "dance": 0.72, "mainstream": 0.55},
+    "tamil film music (classic)":{"energy": 0.58, "valence": 0.65, "dance": 0.60, "mainstream": 0.40},
+    "tamil film (classic)":      {"energy": 0.58, "valence": 0.65, "dance": 0.60, "mainstream": 0.40},
+    "tamil hip-hop":             {"energy": 0.82, "valence": 0.60, "dance": 0.80, "mainstream": 0.45},
+    "tamil independent":         {"energy": 0.55, "valence": 0.58, "dance": 0.55, "mainstream": 0.28},
+    "tamil independent/film":    {"energy": 0.60, "valence": 0.60, "dance": 0.60, "mainstream": 0.35},
+    "telugu film music":         {"energy": 0.75, "valence": 0.70, "dance": 0.74, "mainstream": 0.52},
+    "kannada film music":        {"energy": 0.70, "valence": 0.66, "dance": 0.70, "mainstream": 0.48},
+    "kannada/tamil film":        {"energy": 0.70, "valence": 0.66, "dance": 0.70, "mainstream": 0.48},
+    "malayalam film music":      {"energy": 0.68, "valence": 0.66, "dance": 0.68, "mainstream": 0.48},
+    "hindi film music":          {"energy": 0.70, "valence": 0.68, "dance": 0.72, "mainstream": 0.68},
+    "hindi pop":                 {"energy": 0.72, "valence": 0.70, "dance": 0.74, "mainstream": 0.72},
+    "hindi hip-hop":             {"energy": 0.80, "valence": 0.58, "dance": 0.78, "mainstream": 0.60},
+    "hindi independent":         {"energy": 0.52, "valence": 0.60, "dance": 0.52, "mainstream": 0.32},
+    "hindi electronic":          {"energy": 0.82, "valence": 0.62, "dance": 0.82, "mainstream": 0.50},
+    "punjabi":                   {"energy": 0.80, "valence": 0.72, "dance": 0.82, "mainstream": 0.62},
+    "punjabi pop":               {"energy": 0.76, "valence": 0.72, "dance": 0.78, "mainstream": 0.68},
+    "devotional":                {"energy": 0.45, "valence": 0.72, "dance": 0.40, "mainstream": 0.32},
+    "spiritual/film":            {"energy": 0.50, "valence": 0.70, "dance": 0.45, "mainstream": 0.38},
+    "indian classical/film":     {"energy": 0.38, "valence": 0.60, "dance": 0.32, "mainstream": 0.22},
+    "indian film/ghazal":        {"energy": 0.48, "valence": 0.65, "dance": 0.45, "mainstream": 0.42},
+}
+
+
+def get_artist_categories(artist_names: List[str]) -> Counter:
+    """
+    Map a list of artist names to Indian/regional music categories.
+    Returns a Counter of {category: frequency} for artists that are in
+    ARTIST_CATEGORY_MAP. Unknown artists are silently skipped (not
+    lumped into 'Other') so they don't pollute the genre list.
+    """
+    counts: Counter = Counter()
+    for name in artist_names:
+        key = name.lower().strip()
+        category = ARTIST_CATEGORY_MAP.get(key)
+        if category:
+            counts[category] += 1
+    return counts
+
+
 # ── Genre mood map (derived from genre names, no Spotify audio-features API) ──
-GENRE_MOOD = {
+GENRE_MOOD: Dict[str, Dict[str, float]] = {
     "hip-hop": {"energy": 0.80, "valence": 0.60, "dance": 0.82, "mainstream": 0.75},
     "rap": {"energy": 0.78, "valence": 0.55, "dance": 0.80, "mainstream": 0.72},
     "trap": {"energy": 0.82, "valence": 0.48, "dance": 0.78, "mainstream": 0.65},
@@ -121,25 +280,29 @@ SQUAD_AWARDS = {
 
 def _match_genre(genre: str) -> Dict[str, float] | None:
     """
-    Try to match a single genre string against GENRE_MOOD.
+    Try to match a single genre string against GENRE_MOOD or INDIAN_CATEGORY_MOOD.
     Strategy:
-      1. Exact substring match  (e.g. "tamil pop" contains "tamil")
-      2. Word-level match       (e.g. "desi hip hop" → words: desi, hip, hop)
-      3. Averaged partial match (average all word hits)
+      1. Check INDIAN_CATEGORY_MOOD first (exact match for our custom categories)
+      2. Exact substring match against GENRE_MOOD keys
+      3. Word-level match / averaged partial match
     Returns a mood dict or None.
     """
     gl = genre.lower().strip()
 
-    # 1. Exact substring — first key that appears inside the genre string
+    # 1. Exact match in Indian category map
+    if gl in INDIAN_CATEGORY_MOOD:
+        return INDIAN_CATEGORY_MOOD[gl]
+
+    # 2. Exact substring — first key that appears inside the genre string
     for key, mood in GENRE_MOOD.items():
         if key in gl:
             return mood
 
-    # 2 & 3. Word-level — collect mood for every word that hits a key
+    # 3. Word-level — collect mood for every word that hits a key
     words = re.split(r"[\s\-_&/]+", gl)
     hits: list[Dict] = []
     for word in words:
-        if len(word) < 3:          # skip short words like "a", "of"
+        if len(word) < 3:
             continue
         for key, mood in GENRE_MOOD.items():
             if word == key or word in key or key in word:
@@ -149,7 +312,6 @@ def _match_genre(genre: str) -> Dict[str, float] | None:
     if not hits:
         return None
 
-    # Average all word-level hits
     return {
         "energy":     round(sum(h["energy"]     for h in hits) / len(hits), 3),
         "valence":    round(sum(h["valence"]    for h in hits) / len(hits), 3),
@@ -217,7 +379,6 @@ def get_personality_type(
     if any(d in genre_str for d in decade_genres):
         return "👴 The Boomer"
 
-    # Count unique genres
     if len(set(genres)) > 8:
         return "🎭 The Chameleon"
 
@@ -234,17 +395,13 @@ def compute_taste_score(
     Compute a fun 'taste score' based purely on user's own data.
     Higher score = more 'interesting' taste (diverse, energetic, unique).
     """
-    # Diversity score: more unique genres = better
     unique_genres = len(set(genres))
     diversity = min(unique_genres / 10, 1.0) * 100
 
-    # Uniqueness score: less mainstream = more unique
     uniqueness = (1 - mood.get("mainstream", 0.5)) * 100
 
-    # Energy score
     energy_score = mood.get("energy", 0.5) * 100
 
-    # Consistency: how focused their taste is
     if top_artists:
         artist_counts = {}
         for t in top_tracks:
@@ -304,35 +461,27 @@ def compute_squad_awards(members: List[Dict]) -> List[Dict]:
 
     awards = []
 
-    # 👑 Music Overlord — highest taste score
     best = max(members, key=lambda m: m["scores"]["overall"])
     awards.append({"award": "👑 Music Overlord", "user": best["display_name"], "reason": f"Taste score: {best['scores']['overall']}"})
 
-    # 💀 Needs Therapy — lowest valence
     saddest = min(members, key=lambda m: m["mood"]["valence"])
     awards.append({"award": "💀 Needs Therapy", "user": saddest["display_name"], "reason": f"Happiness score: {round(saddest['mood']['valence']*100)}%"})
 
-    # 🤡 Spotify's Puppet — highest mainstream
     most_mainstream = max(members, key=lambda m: m["mood"]["mainstream"])
     awards.append({"award": "🤡 Spotify's Puppet", "user": most_mainstream["display_name"], "reason": f"Mainstream score: {round(most_mainstream['mood']['mainstream']*100)}%"})
 
-    # 🧅 Too Cool For This — lowest mainstream
     most_unique = min(members, key=lambda m: m["mood"]["mainstream"])
     awards.append({"award": "🧅 Too Cool For This", "user": most_unique["display_name"], "reason": f"Uniqueness: {round((1-most_unique['mood']['mainstream'])*100)}%"})
 
-    # 🔥 Hype Beast — highest energy
     most_energetic = max(members, key=lambda m: m["mood"]["energy"])
     awards.append({"award": "🔥 Hype Beast", "user": most_energetic["display_name"], "reason": f"Energy: {round(most_energetic['mood']['energy']*100)}%"})
 
-    # 😴 Background Music — lowest energy
     most_chill = min(members, key=lambda m: m["mood"]["energy"])
     awards.append({"award": "😴 Background Music", "user": most_chill["display_name"], "reason": f"Energy: {round(most_chill['mood']['energy']*100)}%"})
 
-    # 🌍 World Citizen — most diverse genres
     most_diverse = max(members, key=lambda m: len(set(m.get("genres", []))))
     awards.append({"award": "🌍 World Citizen", "user": most_diverse["display_name"], "reason": f"{len(set(most_diverse.get('genres', [])))} unique genres"})
 
-    # 🔁 One-Trick Pony — most obsessed with one artist
     for m in members:
         if m.get("intervention", {}).get("needed"):
             awards.append({

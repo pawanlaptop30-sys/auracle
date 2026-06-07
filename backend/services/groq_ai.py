@@ -1,3 +1,4 @@
+from typing import List
 import httpx
 import json
 import logging
@@ -180,7 +181,7 @@ async def generate_battle_verdict(user_a: dict, user_b: dict) -> dict:
 
 # ── SQUAD PROMPTS ──────────────────────────────────────────────────────────────
 
-async def generate_squad_roast(members: list[dict]) -> str:
+async def generate_squad_roast(members: List[dict]) -> str:
     system = (
         "You are a roast comedian at a music-themed roast dinner. "
         "Roast an entire friend group's combined music taste. "
@@ -206,6 +207,3 @@ async def generate_compatibility_tagline(user_a: dict, user_b: dict, score: floa
         f"Compatibility: {score:.0f}%."
     )
     return await _call(system, prompt, max_tokens=80)
-
-
-from typing import List
